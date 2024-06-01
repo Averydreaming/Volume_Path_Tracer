@@ -1,42 +1,87 @@
-# lajolla
-UCSD CSE 272 renderer
+# Volume Path Tracer ( Milestone )
 
-# Build
-All the dependencies are included. Use CMake to build.
-If you are on Unix systems, try
-```
-mkdir build
-cd build
-cmake ..
-cmake --build .
-```
-It requires compilers that support C++17 (gcc version >= 8, clang version >= 7, Apple Clang version >= 11.0, MSVC version >= 19.14).
+#### Group Member: Ruan Hang, Yijin Guo, Yuhao Wang
 
-Apple M1 users: you might need to build Embree from scratch since the prebuilt MacOS binary provided is built for x86 machines. (But try build command above first.)
+## Current Progress
 
-# Run
-Try 
-```
-cd build
-./lajolla ../scenes/cbox/cbox.xml
-```
-This will generate an image "image.exr".
+### Environment Setup
 
-To view the image, use [hdrview](https://github.com/wkjarosz/hdrview), or [tev](https://github.com/Tom94/tev).
+- We have tried for several structures and finally choose the [lajolla](https://github.com/BachiLi/lajolla_public) as the basic renderer.
 
-# Acknowledgement
-The renderer is heavily inspired by [pbrt](https://pbr-book.org/), [mitsuba](http://www.mitsuba-renderer.org/index_old.html), and [SmallVCM](http://www.smallvcm.com/).
+- Since lajolla finally output the rendered images as .exr file format, we visualize the images by [hdrview](https://github.com/wkjarosz/hdrview). We plan to change the output format to .png.
 
-We use [Embree](https://www.embree.org/) for ray casting.
+### Model for paricipanting media
 
-We use [pugixml](https://pugixml.org/) to parse XML files.
+The radiative transfer equation is made of four components: absorption, emission, in-scattering, and out-scattering. Given a ray inside the volume parametrized by distance $p(t)$, the radiance along the ray is modeled by the **radiative transfer equation**:
 
-We use [pcg](https://www.pcg-random.org/) for random number generation.
+$$
+\frac{d}{dt}L(p(t),\omega)=-(\sigma_a(p(t))+\sigma_s(p(t)))L(p(t),\omega)+L_e(p(t),\omega)+\sigma_s(p(t))\int_{S^2}\rho(p(t),\omega,\omega')L(p(t),\omega')d\omega'
+$$
 
-We use [stb_image](https://github.com/nothings/stb) and [tinyexr](https://github.com/syoyo/tinyexr) for reading & writing images.
+where $L$ is the radiance, $\sigma_a$ is the absorption coefficient, $\sigma_s$ is the scattering coefficient, $L_e$ is the (volumetric) emission, $\rho$ is the *phase function* that is akin to BSDFs in surface rendering, and $S^2$ is the spherical domain.
 
-We use [miniz](https://github.com/richgel999/miniz) for compression & decompression.
 
-We use [tinyply](https://github.com/ddiakopoulos/tinyply) for parsing PLY files.
+### Codes
 
-Many scenes in the scenes folder are directly downloaded from [http://www.mitsuba-renderer.org/download.html](http://www.mitsuba-renderer.org/download.html). Scenes courtesy of Wenzel Jakob, Cornell Program of Computer Graphics, Marko Dabrovic, Eric Veach, Jonas Pilo, and Bernhard Vogl.
+We split the development into 6 steps and build 6 volumetric path tracers. Each has more features than the previous ones. Up to now, we have finished the first two steps. This two renderer is based on the assumptions as follows:
+
+#### Single monochromatic absorption-only homogeneous volume
+
+- There is only a single, homogeneous volume:  are constant.
+- The volume does not scatter light: .
+- The surfaces in the scene only emit lights and do not reflect/transmit lights.
+- The volume is monochromatic: three color channels of  have the same values.
+
+#### Single monochromatic homogeneous volume with absorption and single-scattering, no surface lighting
+
+- There is only a single, homogeneous volume:  and are constant.
+- The surfaces in the scene only emit lights and do not reflect/transmit lights.
+- The volume is monochromatic: three color channels of  and  have the same values.
+- Light only scatters (changes direction) once in the volume.
+
+The codes especially for the two renderers can be found in `src/vol_path_tracing.h`. 
+
+## Preliminary Reuslts 
+
+After completing the first two render, we can obtain the corresponding rendering results. They are as follows:
+
+![Example Image1](docs/test1.jpg)
+
+![Example Image1](docs/test2.jpg)
+
+The rendering scene file can be found in `/scenes/volpath_test`.
+
+
+## Work Plan
+
+### Introduction
+ 
+There are still 4 steps remaining for our volume path tracer.
+
+- Multiple monochromatic homogeneous volumes with absorption and multiple-scattering using only phase function sampling, no surface lighting
+
+- Multiple monochromatic homogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, no surface lighting
+
+- Multiple monochromatic homogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, with surface lighting
+
+- Multiple chromatic heterogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, with surface lighting
+
+Furthermore, we plan to generate the rendering scene file of smoke and render beautiful images. We consider to generate animations if there's enough time remaining. 
+
+### Specific Plan
+
+**June 1 - June 9**
+
+- Do something for the output format. For example, use the .png instead of .exr.
+
+- Understand all the remaining steps and complete the codes for the following 3 steps.
+
+**June 10 - June 16**
+
+- Complete the codes for the last step.
+
+- Generate the scene file of smoke and get the rendered results.
+
+- Try to generate the videos if there's enough time.
+
+- Finish the final report and prepare for the final presentation.
