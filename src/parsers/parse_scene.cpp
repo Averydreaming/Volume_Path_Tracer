@@ -685,6 +685,8 @@ PhaseFunction parse_phase_function(pugi::xml_node node,
             }
         }
         return HenyeyGreenstein{g};
+    } else if (type == "rayleigh") {
+        return Rayleigh{};
     } else {
         Error(std::string("Unrecognized phase function:") + type);
     }
@@ -740,6 +742,15 @@ std::tuple<std::string /* ID */, Medium> parse_medium(
         set_scale(density, scale);
         return std::make_tuple(id,
             HeterogeneousMedium{{phase_func}, albedo, density});
+    } else if (type == "atmosphere") {
+        for (auto child : node.children()) {
+            std::string name = child.attribute("name").value();
+            if (std::string(child.name()) == "phase") {
+                phase_func = parse_phase_function(child, default_map);
+            }
+        }
+        return std::make_tuple(id,
+            AtmosphereMedium{{phase_func}});
     } else {
         Error(std::string("Unknown medium type:") + type);
     }
@@ -1406,7 +1417,7 @@ Shape parse_shape(pugi::xml_node node,
     return shape;
 }
 
-std::unique_ptr<Scene> parse_scene(pugi::xml_node node, const RTCDevice &embree_device) {
+Scene parse_scene(pugi::xml_node node, const RTCDevice &embree_device) {
     RenderOptions options;
     Camera camera(Matrix4x4::identity(),
                   c_default_fov,
@@ -1586,20 +1597,19 @@ std::unique_ptr<Scene> parse_scene(pugi::xml_node node, const RTCDevice &embree_
             }
         }
     }
-    return std::make_unique<Scene>(
-                embree_device,
-                camera,
-                materials,
-                shapes,
-                lights,
-                media,
-                envmap_light_id,
-                texture_pool,
-                options,
-                filename);
+    return Scene{embree_device,
+                 camera,
+                 materials,
+                 shapes,
+                 lights,
+                 media,
+                 envmap_light_id,
+                 texture_pool,
+                 options,
+                 filename};
 }
 
-std::unique_ptr<Scene> parse_scene(const fs::path &filename, const RTCDevice &embree_device) {
+Scene parse_scene(const fs::path &filename, const RTCDevice &embree_device) {
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_file(filename.c_str());
     if (!result) {
@@ -1610,7 +1620,7 @@ std::unique_ptr<Scene> parse_scene(const fs::path &filename, const RTCDevice &em
     // back up the current working directory and switch to the parent folder of the file
     fs::path old_path = fs::current_path();
     fs::current_path(filename.parent_path());
-    std::unique_ptr<Scene> scene = parse_scene(doc.child("scene"), embree_device);
+    Scene scene = parse_scene(doc.child("scene"), embree_device);
     // switch back to the old current working directory
     fs::current_path(old_path);
     return scene;

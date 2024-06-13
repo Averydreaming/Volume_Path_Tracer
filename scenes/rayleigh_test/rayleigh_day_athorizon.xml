@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- SCENE: 中午看地平线 -->
+
+<scene version="0.5.0">
+	<integrator type="volpath">
+		<integer name="maxDepth" value="-1"/>
+		<integer name="version" value="105"/>
+	</integrator>
+
+	<!-- exteriror medium. AKA outer space-->
+	<medium type="homogeneous" id="medium1">
+		<rgb name="sigmaA" value="0 0 0"/>
+		<rgb name="sigmaS" value="0 0 0"/>
+		<float name="scale" value="1"/>
+	</medium>
+
+	<!-- TODO the atmosphere of earth -->
+	<medium type="atmosphere" id="medium2">
+		<phase type="rayleigh">
+		</phase>
+	</medium>
+
+	<!-- atmosphere -->
+	<shape type="sphere">
+		<point name="center" x="0" y="0" z="0"/>
+		<!-- 100km more than earth radius -->
+		<float name="radius" value="6478"/>
+
+		<ref name="interior" id="medium2"/>
+		<ref name="exterior" id="medium1"/>
+	</shape>
+
+	<!-- the earth -->
+	<shape type="sphere">
+		<point name="center" x="0" y="0" z="0"/>
+		<float name="radius" value="6378"/>
+
+		<ref name="exterior" id="medium2"/>
+
+		<bsdf type="diffuse">
+			<rgb name="reflectance" value="0.3 0.3 0.3"/>
+		</bsdf>
+	</shape>
+
+	<!-- the sun -->
+	<shape type="sphere">
+		<!--<point name="center" x="0" y="0" z="23518"/>-->
+		<point name="center" x="0" y="150000000" z="0"/>
+		<float name="radius" value="695700"/>
+
+		<emitter type="area">
+			<!-- sun's radiance from "A Practical Analytic Model for Daylight" -->
+			<rgb name="radiance" value="210970 255030 267600"/>
+		</emitter>
+
+		<ref name="exterior" id="medium1"/>
+
+		<bsdf type="diffuse">
+			<rgb name="reflectance" value="0.0 0.0 0.0"/>
+		</bsdf>
+	</shape>
+
+	<sensor type="perspective">
+		<string name="fovAxis" value="x"/>
+		<float name="fov" value="90"/>
+		<transform name="toWorld">
+			<!--<lookAt target="0, 0, 23155" origin="0, 0, 0.985" up="0, 1, 0"/>-->
+			<!-- 5 degree back of earth -->
+			<!--<lookAt target="0, 0, 23155" origin="0, 0.98125177761, -0.08584840659" up="0, 1, 0"/>-->
+			<!-- 3 degree back of earth -->
+			<!--<lookAt target="0, 0, 23155" origin="0, 0.98365009173, -0.05155091689" up="0, 1, 0"/>-->
+			<!-- 1 degree back of earth -->
+			<!--<lookAt target="0, 0, 23155" origin="0, 0.98484997972, -0.01719062034" up="0, 1, 0"/>-->
+			<!-- top of earth -->
+			<lookAt target="0, 0, 150000000" origin="0, 6378.1, 0" up="0, 1, 0"/>
+
+			<!-- 3 degree front of earth -->
+			<!--<lookAt target="0, 0, 23155" origin="0, 0.98365009173, 0.05155091689" up="0, 1, 0"/>-->
+
+			<!-- 5 degree front of earth -->
+			<!--<lookAt target="0, 0, 23155" origin="0, 0.98125177761, 0.08584840659" up="0, 1, 0"/>-->
+
+			<!-- 30 degree front of earth -->
+			<!-- <lookAt target="0, 0, 150000000" origin="0, 5524, 3190" up="0, 1, 0"/> -->
+		
+		</transform>
+
+		<sampler type="independent">
+			<integer name="sampleCount" value="1024"/>
+		</sampler>
+
+		<film type="hdrfilm" id="film">
+			<integer name="width" value="512"/>
+			<integer name="height" value="512"/>
+			<string name="pixelFormat" value="rgb"/>
+			<boolean name="banner" value="false"/>
+
+			<rfilter type="gaussian"/>
+		</film>
+
+		<!--Since eye inside of medium2, set it as medium id-->
+		<ref id="medium2"/>
+	</sensor>
+</scene>

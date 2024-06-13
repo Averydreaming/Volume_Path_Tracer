@@ -199,12 +199,12 @@ Spectrum vol_path_tracing_3(const Scene &scene,
         if (scatter) {
             //# sample next direct & update path throughput
             Vector3 p = primaryRay.org;
-            std::optional<Vector3> opt_dir = sample_phase_function(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, Vector2(next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)));
+            std::optional<Vector3> opt_dir = sample_phase_function(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, Vector2(next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)), next_pcg32_real<Real>(rng));
             if (opt_dir) {
                 Vector3 next_dir = opt_dir.value();
                 Real sigma_s = get_sigma_s(scene.media[currentMediumIndex], p).x;
                 Real pdf = pdf_sample_phase(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, next_dir);
-                current_path_throughput *= (eval(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, next_dir) / pdf;
+                current_path_throughput *= eval(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, next_dir) / pdf;
                 primaryRay = Ray{primaryRay.org + next_dir * get_intersection_epsilon(scene), next_dir, Real(0), infinity<Real>()};
             }
         }
