@@ -66,7 +66,7 @@ Spectrum next_event_estimation(Vector3 p, Vector3 omega, int current_medium, int
             int max_bounce = scene.options.max_depth;
             if (max_bounce != -1 && bounces + shadow_bounces + 1 >= max_bounce)
                 return make_zero_spectrum();
-            shadow_medium = update_medium_id(vertex, shadow_ray, shadow_medium);
+            shadow_medium = update_medium_id(vertex, shadow_ray, 0);
             p = p + next_t * (shadow_ray.dir);
         } else break;
     }
@@ -344,9 +344,11 @@ Spectrum vol_path_tracing_4(const Scene &scene,
         if (currentMediumIndex == -1) { // 在真空中，直接处理
             if (isect) {
                 PathVertex vertex = isect.value();
-                ray.org = ray.org + distance(ray.org, vertex.position) * ray.dir;
+                primaryRay.org = primaryRay.org + distance(primaryRay.org, vertex.position) * primaryRay.dir;
             } else break;
-        } else { // 不在真空中
+        }
+        
+        if (currentMediumIndex != -1) { // 不在真空中
             // sample t s.t. p(t) ~ exp(-sigma_t * t)
             Real sigmaS = get_sigma_s(scene.media[currentMediumIndex], primaryRay.org).x;
             Real sigmaA = get_sigma_a(scene.media[currentMediumIndex], primaryRay.org).x;
@@ -374,7 +376,8 @@ Spectrum vol_path_tracing_4(const Scene &scene,
                 primaryRay.org = primaryRay.org + t * primaryRay.dir;
             }  
         }       
-            
+        current_path_throughput *= (transmittance / trans_pdf);
+
         if (!scatter && isect) { // 如果没有发生散射，而是到达了一个会发光的表面
             if (never_scatter) {
                 PathVertex vertex = isect.value();
@@ -387,14 +390,14 @@ Spectrum vol_path_tracing_4(const Scene &scene,
                     PointAndNormal light_point = {vertex.position, vertex.geometric_normal};
                     int light_id = get_area_light_id(scene.shapes[vertex.shape_id]);
                     Light currlight = scene.lights[light_id];
-                    Real pdf_nee = pdf_nepoint_on_light(currlight, light_point, nee_p_cache, scene) * light_pmf(scene, light_id);
+                    Real pdf_nee = pdf_point_on_light(currlight, light_point, nee_p_cache, scene) * light_pmf(scene, light_id);
                     Vector3 omega_prime = normalize(vertex.position - nee_p_cache);
                     Real top = abs(dot(omega_prime, vertex.geometric_normal));
                     Real bottom = length_squared(vertex.position - nee_p_cache);
                     Real G = top/bottom;
                     Real dir_pdf_ = dir_pdf * multi_trans_pdf * G;
                     Real w = (dir_pdf_ * dir_pdf_) / (dir_pdf_ * dir_pdf_ + pdf_nee * pdf_nee);
-                    radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w;
+                    radiance += current_path_throughput * emission(vertex, -primaryRay.dir, scene) * w;
                 }
 
             }
@@ -423,7 +426,7 @@ Spectrum vol_path_tracing_4(const Scene &scene,
             if (opt_dir) {
                 Vector3 next_dir = opt_dir.value();
                 Real sigma_s = get_sigma_s(scene.media[currentMediumIndex], p).x;
-                int light_id = sample_light(scene, next_pcg32_real<Real>(rng);
+                int light_id = sample_light(scene, next_pcg32_real<Real>(rng));
                 Spectrum nee_out = next_event_estimation(p, -primaryRay.dir, currentMediumIndex, bounces, scene.lights[light_id], scene, rng, light_id);
                 radiance += current_path_throughput * nee_out * sigma_s;
                 dir_pdf = pdf_sample_phase(pf, -primaryRay.dir, next_dir);
