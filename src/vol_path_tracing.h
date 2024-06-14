@@ -1,5 +1,15 @@
 #pragma once
-inline int update_medium_id(const PathVertex &vertex,
+
+#include "lajolla.h"
+#include "pcg.h"
+#include "phase_function.h"
+#include "spectrum.h"
+#include "intersection.h"
+#include "point_and_normal.h"
+#include "light.h"
+#include "scene.h"
+
+int update_medium_id(const PathVertex &vertex,
                             const Ray &ray,
                             int medium_id) {
     if (vertex.interior_medium_id != vertex.exterior_medium_id) {
@@ -11,6 +21,77 @@ inline int update_medium_id(const PathVertex &vertex,
         }
     }
     return medium_id;
+}
+
+Spectrum next_event_estimation(Vector3 p, Vector3 omega, int current_medium, int bounces, Light light, const Scene& scene, pcg32_state& rng, int light_id) {
+
+    PointAndNormal p_prime = sample_point_on_light(light, p, 
+                                Vector2(next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)),
+                                next_pcg32_real<Real>(rng), scene);
+
+    Real T_light = 1;
+    int shadow_medium = current_medium;
+    int shadow_bounces = 0;
+    Real p_trans_dir = 1;
+
+    Vector3 orig_p = p;
+
+    while (true) {
+        Ray shadow_ray = Ray{p, normalize(p_prime.position - p),  get_shadow_epsilon(scene),
+                               (1 - get_shadow_epsilon(scene)) *
+                                   distance(p_prime.position, p)};
+        RayDifferential ray_diff = RayDifferential{ Real(0), Real(0) };
+        std::optional<PathVertex> isect = intersect(scene, shadow_ray, ray_diff);
+        Real next_t = distance(p, p_prime.position);
+
+        if (isect) {
+            PathVertex vertex = *isect;
+            next_t = distance(p, vertex.position);
+        }
+
+        if (shadow_medium != -1) {
+            Medium medium = scene.media[shadow_medium];
+            Real sigma_a = get_sigma_a(medium, Vector3(1, 2, 3)).x;
+            Real sigma_s = get_sigma_s(medium, Vector3(1, 2, 3)).x;
+            Real sigma_t = sigma_a + sigma_s;
+            T_light *= exp(-sigma_t * next_t);
+            p_trans_dir *= exp(-sigma_t * next_t);
+        }
+            
+        if (isect) {
+            PathVertex vertex = isect.value();
+            if (vertex.material_id >= 0)
+                return make_zero_spectrum();
+            ++shadow_bounces;
+            int max_bounce = scene.options.max_depth;
+            if (max_bounce != -1 && bounces + shadow_bounces + 1 >= max_bounce)
+                return make_zero_spectrum();
+            shadow_medium = update_medium_id(vertex, shadow_ray, shadow_medium);
+            p = p + next_t * (shadow_ray.dir);
+        } else break;
+    }
+
+    if (T_light > 0) {
+        Vector3 omega_prime = normalize(orig_p - p_prime.position);
+        Real denom = distance_squared(orig_p, p_prime.position);
+        Real top = abs(dot(omega_prime, p_prime.normal));
+        Real G = top / denom;
+        PhaseFunction pf = get_phase_function(scene.media[current_medium]);
+
+        Spectrum f = eval(pf, omega, -omega_prime);
+        Spectrum Le = emission(light, omega_prime, Real(0), p_prime, scene);
+        Real pdf_nee = light_pmf(scene, light_id) *
+            pdf_point_on_light(light, p_prime, orig_p, scene);
+        
+        Spectrum contrib = T_light * G * f * Le / pdf_nee;
+        Real pdf_phase = pdf_sample_phase(pf, omega, -omega_prime) * G * p_trans_dir;
+        Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_phase * pdf_phase);
+
+        return w * contrib;
+    }
+
+    return make_zero_spectrum();
+
 }
 
 // The simplest volumetric renderer: 
@@ -247,6 +328,11 @@ Spectrum vol_path_tracing_4(const Scene &scene,
     // 初始化射线的起始介质
     int currentMediumIndex = scene.camera.medium_id;
 
+    bool never_scatter = true;
+    Real dir_pdf = 0;
+    Vector3 nee_p_cache;
+    Real multi_trans_pdf = 1;
+
     while (true) {
         // 是否发生散射
         bool scatter = false; 
@@ -255,7 +341,12 @@ Spectrum vol_path_tracing_4(const Scene &scene,
         Real transmittance = 1; //散射事件发生的概率
         Real trans_pdf = 1;  //光线在介质中传播时被吸收的程度
         
-        if (currentMediumIndex != -1) { //如果不是在真空中
+        if (currentMediumIndex == -1) { // 在真空中，直接处理
+            if (isect) {
+                PathVertex vertex = isect.value();
+                ray.org = ray.org + distance(ray.org, vertex.position) * ray.dir;
+            } else break;
+        } else { // 不在真空中
             // sample t s.t. p(t) ~ exp(-sigma_t * t)
             Real sigmaS = get_sigma_s(scene.media[currentMediumIndex], primaryRay.org).x;
             Real sigmaA = get_sigma_a(scene.media[currentMediumIndex], primaryRay.org).x;
@@ -284,12 +375,28 @@ Spectrum vol_path_tracing_4(const Scene &scene,
             }  
         }       
             
-        if (!scatter) { // 如果没有发生散射，而是到达了一个会发光的表面
-            if (isect) { // 如果光线与场景相交
+        if (!scatter && isect) { // 如果没有发生散射，而是到达了一个会发光的表面
+            if (never_scatter) {
                 PathVertex vertex = isect.value();
                 if (is_light(scene.shapes[vertex.shape_id])) {  //如果交点是光源
                     radiance += current_path_throughput * emission(vertex, -primaryRay.dir, scene);
                 }
+            } else { // 之前有至少发生一次过散射
+                PathVertex vertex = isect.value();
+                if (is_light(scene.shapes[vertex.shape_id])) {
+                    PointAndNormal light_point = {vertex.position, vertex.geometric_normal};
+                    int light_id = get_area_light_id(scene.shapes[vertex.shape_id]);
+                    Light currlight = scene.lights[light_id];
+                    Real pdf_nee = pdf_nepoint_on_light(currlight, light_point, nee_p_cache, scene) * light_pmf(scene, light_id);
+                    Vector3 omega_prime = normalize(vertex.position - nee_p_cache);
+                    Real top = abs(dot(omega_prime, vertex.geometric_normal));
+                    Real bottom = length_squared(vertex.position - nee_p_cache);
+                    Real G = top/bottom;
+                    Real dir_pdf_ = dir_pdf * multi_trans_pdf * G;
+                    Real w = (dir_pdf_ * dir_pdf_) / (dir_pdf_ * dir_pdf_ + pdf_nee * pdf_nee);
+                    radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w;
+                }
+
             }
         }
 
@@ -301,21 +408,29 @@ Spectrum vol_path_tracing_4(const Scene &scene,
                 currentMediumIndex = update_medium_id(vertex, primaryRay, currentMediumIndex);
                 primaryRay.org = vertex.position + primaryRay.dir * get_intersection_epsilon(scene);
                 bounces += 1;
+                multi_trans_pdf *= trans_pdf;
                 continue;
             }
         }
 
         
         if (scatter) {
+            never_scatter = false;
             //# sample next direct & update path throughput
             Vector3 p = primaryRay.org;
-            std::optional<Vector3> opt_dir = sample_phase_function(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, Vector2(next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)), next_pcg32_real<Real>(rng));
+            PhaseFunction pf = get_phase_function(scene.media[currentMediumIndex]);
+            std::optional<Vector3> opt_dir = sample_phase_function(pf, -primaryRay.dir, Vector2(next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)), next_pcg32_real<Real>(rng));
             if (opt_dir) {
                 Vector3 next_dir = opt_dir.value();
                 Real sigma_s = get_sigma_s(scene.media[currentMediumIndex], p).x;
-                Real pdf = pdf_sample_phase(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, next_dir);
-                current_path_throughput *= eval(get_phase_function(scene.media[currentMediumIndex]), -primaryRay.dir, next_dir) / pdf;
+                int light_id = sample_light(scene, next_pcg32_real<Real>(rng);
+                Spectrum nee_out = next_event_estimation(p, -primaryRay.dir, currentMediumIndex, bounces, scene.lights[light_id], scene, rng, light_id);
+                radiance += current_path_throughput * nee_out * sigma_s;
+                dir_pdf = pdf_sample_phase(pf, -primaryRay.dir, next_dir);
+                current_path_throughput *= (eval(pf, -primaryRay.dir, next_dir) / dir_pdf) * sigma_s;
                 primaryRay = Ray{primaryRay.org + next_dir * get_intersection_epsilon(scene), next_dir, Real(0), infinity<Real>()};
+                nee_p_cache = p;;
+                multi_trans_pdf = Real(1);
             }
         }
         else {
