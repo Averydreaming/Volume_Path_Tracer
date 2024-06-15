@@ -121,6 +121,8 @@ Image3 vol_path_render(const Scene &scene) {
         f = vol_path_tracing_5;
     } else if (scene.options.vol_path_version == 6) {
         f = vol_path_tracing;
+    } else if (scene.options.vol_path_version == 105) {
+        f = vol_path_tracing;
     }
 
     ProgressReporter reporter(num_tiles_x * num_tiles_y);
