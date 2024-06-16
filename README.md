@@ -4,7 +4,7 @@
 
 ### **Summary**
 
-In this project, we will build a volumetric path tracer that can handle scattering and absorption inside participating media inside lajolla. We will split the development into 5 steps and build 5 volumetric path tracers. Each has more features than the previous ones.After complementing the renderer, we introduce the atmospheric medium to simulate the natural phenomenon.Then we render some scene files for the simulation of sunrise and generate a video() for it.
+In this project, we will build a volumetric path tracer that can handle scattering and absorption inside participating media inside lajolla. We will split the development into 5 steps and build 5 volumetric path tracers. Each has more features than the previous ones.After complementing the renderer, we introduce the atmospheric medium to simulate the natural phenomenon.Then we render some scene files for the simulation of sunrise and generate a video for it.
 
 ### Build
 
